@@ -1,3 +1,24 @@
+import olStyleStyle from 'ol/style/Style';
+import olStyleFill from 'ol/style/Fill';
+import olStyleStroke from 'ol/style/Stroke';
+import olStyleCircle from 'ol/style/Circle';
+import olStyleIcon from 'ol/style/Icon';
+import olStyleText from 'ol/style/Text';
+import * as olExtent from 'ol/extent';
+import {defaults as olInteractionDefaults} from 'ol/interaction';
+import olFormatWKT from 'ol/format/WKT';
+import olFormatGeoJSON from 'ol/format/GeoJSON';
+import olView from 'ol/View';
+import {METERS_PER_UNIT as olProjUnitsMETERS_PER_UNIT} from 'ol/proj/Units';
+import * as olProjProj4 from 'ol/proj/proj4';
+import * as olProj from 'ol/proj';
+import olMap from 'ol/Map';
+import {defaults as olControlDefaults} from 'ol/control';
+import * as olSphere from 'ol/sphere';
+import * as olGeom from 'ol/geom';
+
+import OskariImageWMS from './plugin/wmslayer/OskariImageWMS';
+
 /**
  * @class Oskari.mapframework.ui.module.common.MapModule
  *
@@ -47,23 +68,24 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
         /**
          * @method createMap
          * Creates Openlayers 3 map implementation
-         * @return {ol.Map}
+         * @return {ol/Map}
          */
         createMap: function () {
             var me = this;
+            olProjProj4.register(window.proj4);
             // this is done BEFORE enhancement writes the values to map domain
             // object... so we will move the map to correct location
             // by making a MapMoveRequest in application startup
-            var controls = ol.control.defaults({
+            var controls = olControlDefaults({
                 zoom: false,
                 attribution: false,
                 rotate: false
             });
-            var interactions = ol.interaction.defaults({
+            var interactions = olInteractionDefaults({
                 altShiftDragRotate: false,
                 pinchRotate: false
             });
-            var map = new ol.Map({
+            var map = new olMap({
                 keyboardEventTarget: document,
                 target: this.getMapElementId(),
                 controls: controls,
@@ -73,10 +95,10 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
                 moveTolerance: 2
             });
 
-            var projection = ol.proj.get(me.getProjection());
+            var projection = olProj.get(me.getProjection());
             projection.setExtent(this.__boundsToArray(this.getMaxExtent()));
 
-            map.setView(new ol.View({
+            map.setView(new olView({
                 extent: projection.getExtent(),
                 projection: projection,
                 // actual startup location is set with MapMoveRequest later on
@@ -87,9 +109,6 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
             }));
 
             me._setupMapEvents(map);
-
-            // user for measurements
-            this.wgs84Sphere = new ol.Sphere(6378137);
 
             return map;
         },
@@ -238,14 +257,14 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
          * @method getGeomArea
          * -  calculates area of given geometry
          *
-         * @param {ol.geom.Geometry} geometry
+         * @param {ol/geom/Geometry} geometry
          * @return {Number} area in square meters
          *
          * http://gis.stackexchange.com/questions/142062/openlayers-3-linestring-getlength-not-returning-expected-value
          * "Bottom line: if your view is 4326 or 3857, don't use getLength()."
          */
         getGeomArea: function(geometry) {
-            if (!geometry || geometry.getType() !== 'Polygon' || geometry.getType() === 'MultiPolygon') {
+            if (!geometry || (geometry.getType() !== 'Polygon' && geometry.getType() !== 'MultiPolygon')) {
                 return 0;
             }
             var sourceProj = this.getMap().getView().getProjection();
@@ -253,18 +272,13 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
                 return geometry.getArea();
             }
             var geom = geometry.clone().transform(sourceProj, 'EPSG:4326');
-            // TODO: needs testing with multipolygon
-            var coordinates = geom.getLinearRing(0).getCoordinates();
-            if (coordinates.length > 0) {
-                return Math.abs(this.wgs84Sphere.geodesicArea(coordinates));
-            }
-            return 0;
+            return Math.abs(olSphere.getArea(geom, {projection: 'EPSG:4326', radius: 6378137}));
         },
         /**
          * @method getGeomLength
          * -  calculates length of given geometry
          *
-         * @param {ol.geom.Geometry} geometry
+         * @param {ol/geom/Geometry} geometry
          * @return {Number} length in meters
          *
          * http://gis.stackexchange.com/questions/142062/openlayers-3-linestring-getlength-not-returning-expected-value
@@ -281,9 +295,9 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
             }
             var coordinates = geometry.getCoordinates();
             for (var i = 0, ii = coordinates.length - 1; i < ii; ++i) {
-                var c1 = ol.proj.transform(coordinates[i], sourceProj, 'EPSG:4326');
-                var c2 = ol.proj.transform(coordinates[i + 1], sourceProj, 'EPSG:4326');
-                length += this.wgs84Sphere.haversineDistance(c1, c2);
+                var c1 = olProj.transform(coordinates[i], sourceProj, 'EPSG:4326');
+                var c2 = olProj.transform(coordinates[i + 1], sourceProj, 'EPSG:4326');
+                length += olSphere.getDistance(c1, c2, 6378137);
             }
             return length;
         },
@@ -347,7 +361,7 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
 
         /**
          * @method isLonLatInViewport
-         * @param {ol.Coordinate} lonlatArray
+         * @param {ol/Coordinate} lonlatArray
          * @param {Number} extendSize (optional) px to expand the viewport size
          * @return {Boolean} true if coordinate is in the viewport
          *
@@ -362,7 +376,7 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
             var height = mapSize.height + extendSize;
             var extent = view.calculateExtent([width, height]);
 
-            return ol.extent.containsCoordinate(extent, lonlatArray);
+            return olExtent.containsCoordinate(extent, lonlatArray);
         },
 
         /* <------------- / OL3 specific ----------------------------------- */
@@ -462,8 +476,10 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
          *     wanting to notify at end of the chain for performance reasons or similar) (optional)
          */
         centerMap: function (lonlat, zoom, suppressEnd) {
-            // TODO: we have isValidLonLat(); maybe use it here
             lonlat = this.normalizeLonLat(lonlat);
+            if (!this.isValidLonLat(lonlat.lon, lonlat.lat)) {
+                return;
+            }
             this.getMap().getView().setCenter([lonlat.lon, lonlat.lat]);
             if (zoom === null || zoom === undefined) {
                 zoom = this.getMapZoom();
@@ -501,7 +517,7 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
             srs = srs || me.getProjection();
 
             try {
-                var proj = ol.proj.get(srs);
+                var proj = olProj.get(srs);
                 units = proj.getUnits(); // return 'degrees' or 'm'
             } catch (err) {
                 var log = Oskari.log('Oskari.mapframework.ui.module.common.MapModule');
@@ -561,11 +577,11 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
                 return pLonlat;
             }
 
-            var isSRSDefined = ol.proj.get(srs);
-            var isTargetSRSDefined = ol.proj.get(targetSRS);
+            var isSRSDefined = olProj.get(srs);
+            var isTargetSRSDefined = olProj.get(targetSRS);
 
             if (isSRSDefined && isTargetSRSDefined) {
-                var transformed = ol.proj.transform([pLonlat.lon, pLonlat.lat], srs, targetSRS);
+                var transformed = olProj.transform([pLonlat.lon, pLonlat.lat], srs, targetSRS);
                 return {
                     lon: transformed[0],
                     lat: transformed[1]
@@ -593,7 +609,7 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
             var tempCoords = [];
             var tempPixels;
             var centerPixels = this.getMap().getPixelFromCoordinate(centerCoords);
-            var mpu = ol.proj.METERS_PER_UNIT[units];
+            var mpu = olProjUnitsMETERS_PER_UNIT[units];
             var scaleCoef = plotScale / 1000;
             var pixels = [];
 
@@ -619,7 +635,7 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
             var units = map.getView().getProjection().getUnits();
             var mapScale = this._sandbox.getMap().getScale();
             var extent = map.getView().calculateExtent(map.getSize());
-            var mpu = ol.proj.METERS_PER_UNIT[units];
+            var mpu = olProjUnitsMETERS_PER_UNIT[units];
             var margin = 10.0;
             var scaleCoef = mapScale / 1000;
 
@@ -670,7 +686,11 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
             return {left: extent[0], bottom: extent[1], right: extent[2], top: extent[3]};
         },
         isPointInExtent: function (extent, x, y){
-            return ol.extent.containsXY(extent, x, y);
+            return olExtent.containsXY(extent, x, y);
+        },
+        getExtentForPointsArray: function (points){
+            var multiPoint = new olGeom.MultiPoint(points);
+            return multiPoint.getExtent();
         },
         /* --------- /Impl specific --------------------------------------> */
 
@@ -678,7 +698,7 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
 ------------------------------------------------------------------> */
         _calculateScalesImpl: function (resolutions) {
             var units = this.getMap().getView().getProjection().getUnits();
-            var mpu = ol.proj.METERS_PER_UNIT[units];
+            var mpu = olProjUnitsMETERS_PER_UNIT[units];
 
             for (var i = 0; i < resolutions.length; ++i) {
                 var scale = resolutions[i] * mpu * 39.37 * this._dpi;
@@ -710,7 +730,7 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
 
             var dpi = dpiTest.height();
             dpiTest.remove();
-            var mpu = ol.proj.METERS_PER_UNIT[units];
+            var mpu = olProjUnitsMETERS_PER_UNIT[units];
             var resolution = scale/(mpu * 39.37 * dpi);
             return resolution;
         },
@@ -720,7 +740,7 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
 ------------------------------------------------------------------> */
 
         /**
-         * @param {ol.layer.Layer} layer ol3 specific!
+         * @param {ol/layer/Layer} layer ol3 specific!
          * @param {Boolean} toBottom if false or missing adds the layer to the top, if true adds it to the bottom of the layer stack
          */
         addLayer: function (layerImpl, toBottom) {
@@ -734,7 +754,7 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
             }
         },
         /**
-         * @param {ol.layer.Layer} layer ol3 specific!
+         * @param {ol/layer/Layer} layer ol3 specific!
          */
         removeLayer: function (layerImpl) {
             if (!layerImpl) {
@@ -749,7 +769,7 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
          * Brings map layer to top
          * @method bringToTop
          *
-         * @param {ol.layer.Layer} layer The new topmost layer
+         * @param {ol/layer/Layer} layer The new topmost layer
          */
         bringToTop: function (layer) {
             var map = this.getMap();
@@ -758,7 +778,7 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
             list.push(layer);
         },
         /**
-         * @param {ol.layer.Layer} layer ol3 specific!
+         * @param {ol/layer/Layer} layer ol3 specific!
          */
         setLayerIndex: function (layerImpl, index) {
             var layerColl = this.getMap().getLayers();
@@ -785,7 +805,7 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
         },
 
         /**
-         * @param {ol.layer.Layer} layer ol3 specific!
+         * @param {ol/layer/Layer} layer ol3 specific!
          */
         getLayerIndex: function (layerImpl) {
             var layerColl = this.getMap().getLayers();
@@ -799,13 +819,13 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
             return -1;
         },
         /**
-         * @param {ol.control.Control} layer ol3 specific!
+         * @param {ol/control/Control} layer ol3 specific!
          */
         _addMapControlImpl: function (ctl) {
             this.getMap().addControl(ctl);
         },
         /**
-         * @param {ol.control.Control} layer ol3 specific!
+         * @param {ol/control/Control} layer ol3 specific!
          */
         _removeMapControlImpl: function (ctl) {
             this.getMap().removeControl(ctl);
@@ -813,7 +833,7 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
 
         /**
          * Creates style based on JSON
-         * @return {ol.style.Style} style ol3 specific!
+         * @return {ol/style/Style} style ol3 specific!
          */
         getStyle: function (styleDef) {
             var me = this;
@@ -840,7 +860,7 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
                         color = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + style.image.opacity + ')';
                     }
                 }
-                olStyle.fill = new ol.style.Fill({
+                olStyle.fill = new olStyleFill({
                     color: color
                 });
             }
@@ -856,13 +876,13 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
                     olStyle.text = textStyle;
                 }
             }
-            return new ol.style.Style(olStyle);
+            return new olStyleStyle(olStyle);
         },
         /**
          * Parses stroke style from json
          * @method __getStrokeStyle
          * @param {Object} style json
-         * @return {ol.style.Stroke}
+         * @return {ol/style/Stroke}
          */
         __getStrokeStyle: function (styleDef) {
             var stroke = {};
@@ -886,13 +906,13 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
             if (styleDef.stroke.lineCap) {
                 stroke.lineCap = styleDef.stroke.lineCap;
             }
-            return new ol.style.Stroke(stroke);
+            return new olStyleStroke(stroke);
         },
         /**
          * Parses image style from json
          * @method __getImageStyle
          * @param {Object} style json
-         * @return {ol.style.Circle}
+         * @return {ol/style/Circle}
          */
         __getImageStyle: function (styleDef) {
             var me = this;
@@ -913,7 +933,7 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
 
             if (me.isSvg(styleDef.image)) {
                 var svg = me.getSvg(styleDef.image);
-                return new ol.style.Icon({
+                return new olStyleIcon({
                     src: svg,
                     size: [size, size],
                     imgSize: [size, size],
@@ -922,7 +942,7 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
             } else if (styleDef.image && styleDef.image.shape) {
                 var offsetX = (!isNaN(styleDef.image.offsetX)) ? styleDef.image.offsetX : 16;
                 var offsetY = (!isNaN(styleDef.image.offsetY)) ? styleDef.image.offsetY : 16;
-                return new ol.style.Icon({
+                return new olStyleIcon({
                     src: styleDef.image.shape,
                     anchorYUnits: 'pixels',
                     anchorXUnits: 'pixels',
@@ -941,19 +961,19 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
                 image.snapToPixel = styleDef.snapToPixel;
             }
             if (Oskari.util.keyExists(styleDef.image, 'fill.color')) {
-                image.fill = new ol.style.Fill({
+                image.fill = new olStyleFill({
                     color: styleDef.image.fill.color
                 });
             }
             if (styleDef.stroke) {
                 image.stroke = this.__getStrokeStyle(styleDef);
             }
-            return new ol.style.Circle(image);
+            return new olStyleCircle(image);
         },
         /**
-         * Parses JSON and returns matching ol.style.Text
+         * Parses JSON and returns matching ol/style/Text
          * @param  {Object} textStyleJSON text style definition
-         * @return {ol.style.Text} parsed style or undefined if no param is given
+         * @return {ol/style/Text} parsed style or undefined if no param is given
          */
         __getTextStyle: function (textStyleJSON) {
             if (!textStyleJSON) {
@@ -982,7 +1002,7 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
                 text.font = textStyleJSON.font;
             }
             if (Oskari.util.keyExists(textStyleJSON, 'fill.color')) {
-                text.fill = new ol.style.Fill({
+                text.fill = new olStyleFill({
                     color: textStyleJSON.fill.color
                 });
             }
@@ -996,7 +1016,7 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
                     text.text = textStyleJSON.labelText;
                 }
             }
-            return new ol.style.Text(text);
+            return new olStyleText(text);
         },
         /**
          * Create a feature from a wkt and calculate a new map viewport to be able to view entire geometry and center to it
@@ -1020,18 +1040,18 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
             if (feature && feature.getGeometry() && feature.getGeometry().getExtent()) {
                 var map = me.getMap();
                 bounds = feature.getGeometry().getExtent();
-                centroid = ol.extent.getCenter(bounds);
+                centroid = olExtent.getCenter(bounds);
                 mapBounds = map.getView().calculateExtent(map.getSize());
 
                 // if both width and height are < mapbounds', no need to change the bounds. Otherwise use the feature's geometry's bounds.
-                if (ol.extent.getHeight(bounds) < ol.extent.getHeight(mapBounds) && ol.extent.getWidth(bounds) < ol.extent.getWidth(mapBounds)) {
+                if (olExtent.getHeight(bounds) < olExtent.getHeight(mapBounds) && olExtent.getWidth(bounds) < olExtent.getWidth(mapBounds)) {
                     zoomToBounds = null;
                 } else {
                     zoomToBounds = {
-                        'top': ol.extent.getTopLeft(bounds)[1],
-                        'left': ol.extent.getTopLeft(bounds)[0],
-                        'bottom': ol.extent.getBottomRight(bounds)[1],
-                        'right': ol.extent.getBottomRight(bounds)[0]
+                        'top': olExtent.getTopLeft(bounds)[1],
+                        'left': olExtent.getTopLeft(bounds)[0],
+                        'bottom': olExtent.getBottomRight(bounds)[1],
+                        'right': olExtent.getBottomRight(bounds)[0]
                     };
                 }
 
@@ -1050,7 +1070,7 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
          * @method getFeatureFromWKT
          */
         getFeatureFromWKT: function (wkt) {
-            var wktFormat = new ol.format.WKT();
+            var wktFormat = new olFormatWKT();
             return wktFormat.readFeature(wkt);
         },
         /**
@@ -1063,13 +1083,13 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
             var OLlayers = this.getOLMapLayers(layerId);
             var urls = [];
             var source = OLlayers[0].getSource();
-            if (ol.source.OskariImageWMS && source instanceof ol.source.OskariImageWMS) {
+            if (source instanceof OskariImageWMS) {
                 urls.push(source.getImageUrl());
             }
             return urls;
         },
         getGeoJSONGeometryFromOL: function (feature) {
-            var olGeoJSON = new ol.format.GeoJSON();
+            var olGeoJSON = new olFormatGeoJSON();
             var geojsonStr = olGeoJSON.writeFeature(feature);
             var geojson = JSON.parse(geojsonStr);
             if (geojson.geometry) {
@@ -1079,7 +1099,7 @@ Oskari.clazz.define('Oskari.mapframework.ui.module.common.MapModule',
         },
 
         getOLGeometryFromGeoJSON: function (geojson) {
-            var olGeoJSON = new ol.format.GeoJSON();
+            var olGeoJSON = new olFormatGeoJSON();
             var olGeom;
             var features;
             // DrawTools (allowMultipleDrawing: multiGeom) returns FeatureCollection where features[0] is multigeom

@@ -193,6 +193,7 @@ Oskari.clazz.define('Oskari.statistics.statsgrid.StateService',
         },
         /**
          * Sets the active indicator and sends an event about the change
+         * Note! Timeseries relies on this so the event need to be sent even if the indicator doesn't change.
          * @param {String} indicatorHash the unique hash from selected indicators details. See getHash()
          */
         setActiveIndicator: function (indicatorHash) {

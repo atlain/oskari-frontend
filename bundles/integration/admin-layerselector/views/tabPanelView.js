@@ -97,6 +97,10 @@ define([
                     id: "wmtslayer",
                     localeKey: "wmts"
                 }, {
+                    id: "vectortilelayer",
+                    localeKey: "vectortile",
+                    footer: false
+                }, {
                     id: "arcgislayer",
                     localeKey: "arcgis",
                     footer: false

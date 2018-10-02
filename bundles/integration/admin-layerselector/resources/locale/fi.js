@@ -56,7 +56,8 @@ Oskari.registerLocalization(
                 "wmts": "WMTS-taso",
                 "arcgis": "ArcGISCache-taso",
                 "arcgis93": "ArcGISRest-taso",
-                "tiles3d" : "3D Tiles -taso"
+                "tiles3d" : "3D Tiles -taso",
+                "vectortile" : "MBTiles -taso"
             },
             "selectLayer": "Valitse ylätaso",
             "selectSubLayer": "Valitse alataso",
@@ -82,6 +83,8 @@ Oskari.registerLocalization(
             "tiles3d1_0": "3D Tiles 1.0",
             "getInfo": "Hae tiedot",
             "editWfs": "Muokkaa WFS-tietoja",
+            "options": "Options JSON",
+            "mbtilesOptionsDesc": "{\n  styles: {\n    default: { ... },\n    myStyle: { ... }\n  },\n  tileGrid: { ... }\n}",
             "selectClass": "Valitse aihe",
             "selectClassDesc": "Valitse listalta karttatasoa kuvaava aihe.",
             "baseName": "Taustakarttatason nimi",
